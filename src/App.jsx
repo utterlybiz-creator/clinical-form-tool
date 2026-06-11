@@ -78,7 +78,7 @@ export default function App() {
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-4-5",
           max_tokens: 1500,
           system: `You are a clinical documentation assistant helping a Nurse Practitioner complete medical forms accurately. 
 You will receive a PDF form and clinical notes. Extract all visible form fields from the PDF, then use the clinical notes to fill each field with the most appropriate value.
