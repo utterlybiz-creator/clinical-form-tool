@@ -8,15 +8,6 @@ const CREAM = "#FAF8F4";
 const GOLD = "#C49A3C";
 const RED = "#C0392B";
 
-function pdfToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
 function fileToArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -26,49 +17,53 @@ function fileToArrayBuffer(file) {
   });
 }
 
+function pdfToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 async function fillPdf(pdfArrayBuffer, fieldMap) {
   const pdfDoc = await PDFDocument.load(pdfArrayBuffer, { ignoreEncryption: true });
   const form = pdfDoc.getForm();
   const fields = form.getFields();
-  
   const filledFields = [];
   const skippedFields = [];
 
   for (const field of fields) {
     const fieldName = field.getName();
-    const fieldNameLower = fieldName.toLowerCase();
-    
-    // Find a matching value from our AI-generated field map
-    let matched = null;
-    for (const [key, value] of Object.entries(fieldMap)) {
-      if (fieldNameLower.includes(key.toLowerCase()) || key.toLowerCase().includes(fieldNameLower)) {
-        matched = value;
-        break;
-      }
+    const value = fieldMap[fieldName];
+    if (value === null || value === undefined || value === "") {
+      skippedFields.push(fieldName);
+      continue;
     }
-
-    if (matched) {
-      try {
-        const fieldType = field.constructor.name;
-        if (fieldType === "PDFTextField") {
-          field.setText(String(matched));
+    try {
+      const typeName = field.constructor.name;
+      if (typeName === "PDFTextField") {
+        field.setText(String(value));
+        filledFields.push(fieldName);
+      } else if (typeName === "PDFCheckBox") {
+        if (value === true || value === "true" || value === "yes" || value === "Yes") {
+          field.check();
           filledFields.push(fieldName);
-        } else if (fieldType === "PDFCheckBox") {
-          if (matched === true || matched === "true" || matched === "yes") {
-            field.check();
-            filledFields.push(fieldName);
-          }
-        } else if (fieldType === "PDFDropdown") {
-          const options = field.getOptions();
-          if (options.includes(matched)) {
-            field.select(matched);
-            filledFields.push(fieldName);
-          }
+        } else {
+          skippedFields.push(fieldName);
         }
-      } catch (e) {
+      } else if (typeName === "PDFRadioGroup") {
+        const options = field.getOptions();
+        if (options.includes(String(value))) {
+          field.select(String(value));
+          filledFields.push(fieldName);
+        } else {
+          skippedFields.push(fieldName);
+        }
+      } else {
         skippedFields.push(fieldName);
       }
-    } else {
+    } catch {
       skippedFields.push(fieldName);
     }
   }
@@ -103,31 +98,48 @@ export default function App() {
     setResult(null);
 
     try {
-      setProgress("Reading PDF form fields...");
-      const base64 = await pdfToBase64(pdfFile);
+      setProgress("Reading PDF form...");
       const arrayBuffer = await fileToArrayBuffer(pdfFile);
+      const base64 = await pdfToBase64(pdfFile);
 
-      // First detect form fields using pdf-lib
       const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       const form = pdfDoc.getForm();
       const fields = form.getFields();
-      const fieldNames = fields.map(f => f.getName());
 
-      setProgress("Sending to AI for field matching...");
+      const fieldDescriptions = fields.map(f => {
+        const name = f.getName();
+        const type = f.constructor.name.replace("PDF", "");
+        let options = "";
+        if (type === "RadioGroup") {
+          try { options = ` [options: ${f.getOptions().join(", ")}]`; } catch {}
+        }
+        return `${name} (${type})${options}`;
+      }).join("\n");
 
-      const systemPrompt = `You are a clinical documentation assistant helping a Nurse Practitioner complete medical forms.
-You will receive a list of PDF form field names and clinical notes. Map the clinical information to the correct fields.
-Respond ONLY with a JSON object where keys are the EXACT field names provided and values are the appropriate content from the clinical notes.
-Only include fields you can confidently fill. Use null for fields you cannot fill.
-No markdown, no explanation, just the JSON object.`;
+      setProgress("AI is reading the form and matching your notes...");
 
-      const userMessage = `PDF Form Fields:
-${fieldNames.join("\n")}
+      const systemPrompt = `You are a clinical documentation assistant helping a Nurse Practitioner complete a medical form.
+You will receive:
+1. The PDF form as a document (so you can see the visual layout and labels)
+2. A list of all PDF field names with their types
+3. Clinical notes from the NP
+
+Your job is to map the clinical information to the correct PDF fields by understanding the visual form layout and matching field positions to their labels.
+
+For text fields: provide the text value.
+For checkboxes: provide true or false.
+For radio groups: provide the exact option value to select.
+Leave fields null if the information is not available in the clinical notes.
+
+Respond ONLY with a valid JSON object where keys are the EXACT field names and values are what to fill in. No markdown, no explanation.`;
+
+      const userMessage = `PDF Field Names and Types:
+${fieldDescriptions}
 
 Clinical Notes:
 ${freeText}
 
-Map the clinical notes to the form fields above. Return ONLY a JSON object with field names as keys.`;
+Return a JSON object mapping each field name to its value based on the clinical notes and the visual form layout you can see in the PDF.`;
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -139,9 +151,18 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-5",
-          max_tokens: 1500,
+          max_tokens: 4000,
           system: systemPrompt,
-          messages: [{ role: "user", content: userMessage }],
+          messages: [{
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: { type: "base64", media_type: "application/pdf", data: base64 },
+              },
+              { type: "text", text: userMessage }
+            ]
+          }],
         }),
       });
 
@@ -152,31 +173,20 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
       const clean = text.replace(/```json|```/g, "").trim();
       const fieldMap = JSON.parse(clean);
 
-      setProgress("Filling PDF form...");
+      setProgress("Filling PDF...");
       const { pdfBytes, filledFields, skippedFields, totalFields } = await fillPdf(arrayBuffer, fieldMap);
 
-      // Create download blob
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const downloadUrl = URL.createObjectURL(blob);
 
       setProgress("");
-      setResult({
-        downloadUrl,
-        fileName: pdfFile.name,
-        filledFields,
-        skippedFields,
-        totalFields,
-      });
+      setResult({ downloadUrl, fileName: pdfFile.name, filledFields, skippedFields, totalFields });
 
     } catch (err) {
       setProgress("");
-      if (err.message.includes("JSON")) {
-        setError("Unexpected AI response format. Please try again.");
-      } else if (err.message.includes("form") || err.message.includes("field")) {
-        setError("This appears to be a flat (non-fillable) PDF. Flat PDF support is coming in the next version.");
-      } else {
-        setError(`Error: ${err.message}`);
-      }
+      setError(err.message.includes("JSON")
+        ? "Unexpected AI response. Please try again."
+        : `Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -204,7 +214,6 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "40px 24px" }}>
 
-        {/* API Key */}
         <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #DDE4EB", padding: 24, marginBottom: 24, boxShadow: "0 2px 12px rgba(13,43,69,0.06)" }}>
           <div style={{ color: NAVY, fontSize: 13, fontWeight: "bold", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>🔑 Anthropic API Key</div>
           <input
@@ -220,8 +229,6 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
-
-          {/* PDF Upload */}
           <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #DDE4EB", padding: 28, boxShadow: "0 2px 12px rgba(13,43,69,0.06)" }}>
             <div style={{ color: NAVY, fontSize: 13, fontWeight: "bold", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>📄 PDF Form</div>
             <div
@@ -248,7 +255,6 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
             )}
           </div>
 
-          {/* Clinical Notes */}
           <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #DDE4EB", padding: 28, boxShadow: "0 2px 12px rgba(13,43,69,0.06)" }}>
             <div style={{ color: NAVY, fontSize: 13, fontWeight: "bold", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🩺 Clinical Notes</div>
             <textarea
@@ -261,7 +267,6 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
           </div>
         </div>
 
-        {/* Run Button */}
         <button
           onClick={run}
           disabled={!canRun}
@@ -272,7 +277,6 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
             : "✨ Complete Form with AI"}
         </button>
 
-        {/* Progress */}
         {progress && (
           <div style={{ background: "#EEF5F5", borderRadius: 8, padding: "16px 20px", fontFamily: "sans-serif", fontSize: 14, color: TEAL, display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
             <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(11,110,110,0.3)", borderTopColor: TEAL, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
@@ -280,36 +284,34 @@ Map the clinical notes to the form fields above. Return ONLY a JSON object with 
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div style={{ background: "#FDF2F2", border: `1px solid ${RED}`, borderRadius: 8, padding: "16px 20px", color: RED, fontFamily: "sans-serif", fontSize: 14, marginBottom: 20 }}>
             ⚠️ {error}
           </div>
         )}
 
-        {/* Result */}
         {result && (
           <div style={{ background: "#fff", borderRadius: 12, border: `1.5px solid ${TEAL}`, padding: 28, boxShadow: "0 2px 12px rgba(11,110,110,0.08)" }}>
             <div style={{ color: TEAL, fontSize: 15, fontWeight: "bold", marginBottom: 16, fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1 }}>✅ PDF Completed</div>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 24 }}>
-              <div style={{ background: "#F0FAF0", border: "1px solid #A8D8A8", borderRadius: 8, padding: "16px", textAlign: "center" }}>
+              <div style={{ background: "#F0FAF0", border: "1px solid #A8D8A8", borderRadius: 8, padding: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: "bold", color: "#2E7D32" }}>{result.filledFields.length}</div>
                 <div style={{ fontSize: 12, color: "#4A7A4A", fontFamily: "sans-serif", marginTop: 4 }}>Fields Filled</div>
               </div>
-              <div style={{ background: "#FEF9EC", border: "1px solid #E8C96A", borderRadius: 8, padding: "16px", textAlign: "center" }}>
+              <div style={{ background: "#FEF9EC", border: "1px solid #E8C96A", borderRadius: 8, padding: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: "bold", color: "#8A6A10" }}>{result.skippedFields.length}</div>
                 <div style={{ fontSize: 12, color: "#8A6A10", fontFamily: "sans-serif", marginTop: 4 }}>Need Review</div>
               </div>
-              <div style={{ background: "#F0F4FF", border: "1px solid #A8B8E8", borderRadius: 8, padding: "16px", textAlign: "center" }}>
+              <div style={{ background: "#F0F4FF", border: "1px solid #A8B8E8", borderRadius: 8, padding: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: "bold", color: NAVY }}>{result.totalFields}</div>
                 <div style={{ fontSize: 12, color: "#4A5A8A", fontFamily: "sans-serif", marginTop: 4 }}>Total Fields</div>
               </div>
             </div>
 
-            {result.skippedFields.length > 0 && (
-              <div style={{ background: "#FEF9EC", border: "1px solid #E8C96A", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontFamily: "sans-serif", fontSize: 13, color: "#8A6A10" }}>
-                <strong>Fields needing your review:</strong> {result.skippedFields.join(", ")}
+            {result.filledFields.length > 0 && (
+              <div style={{ background: "#F0FAF0", border: "1px solid #A8D8A8", borderRadius: 8, padding: "12px 16px", marginBottom: 16, fontFamily: "sans-serif", fontSize: 12, color: "#2E7D32", maxHeight: 80, overflowY: "auto" }}>
+                <strong>Filled:</strong> {result.filledFields.join(", ")}
               </div>
             )}
 
