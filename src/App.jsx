@@ -178,4 +178,69 @@ Respond ONLY with a JSON object in this exact format (no markdown, no explanatio
             )}
           </div>
 
-          <div style={{ background
+          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #DDE4EB", padding: 28, boxShadow: "0 2px 12px rgba(13,43,69,0.06)" }}>
+            <div style={{ color: NAVY, fontSize: 13, fontWeight: "bold", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1, marginBottom: 16 }}>🩺 Clinical Notes</div>
+            <textarea
+              style={{ width: "100%", minHeight: 200, border: "1.5px solid #DDE4EB", borderRadius: 8, padding: "14px 16px", fontFamily: "Georgia, serif", fontSize: 14, color: NAVY, lineHeight: 1.7, resize: "vertical", outline: "none", boxSizing: "border-box", background: "#FAFBFC" }}
+              placeholder={"Type your clinical shorthand here…\n\nExamples:\n• 52F HTN DM2, f/u, BP 136/82, A1c 7.1\n• Referral to cardiology, exertional chest pain"}
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+            />
+            <div style={{ fontSize: 12, color: "#8A9BAA", fontFamily: "sans-serif", marginTop: 8 }}>Abbreviations and shorthand are fine.</div>
+          </div>
+        </div>
+
+        <button
+          onClick={run}
+          disabled={!canRun}
+          style={{ width: "100%", background: canRun ? TEAL : "#B0C4CE", color: "#fff", border: "none", borderRadius: 10, padding: "18px 0", fontSize: 16, fontFamily: "sans-serif", fontWeight: "bold", cursor: canRun ? "pointer" : "not-allowed", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
+        >
+          {loading
+            ? <><span style={{ display: "inline-block", width: 18, height: 18, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} /> Processing...</>
+            : "✨ Complete Form with AI"}
+        </button>
+
+        {progress && (
+          <div style={{ background: "#EEF5F5", borderRadius: 8, padding: "16px 20px", fontFamily: "sans-serif", fontSize: 14, color: TEAL, display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+            <span style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(11,110,110,0.3)", borderTopColor: TEAL, borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+            {progress}
+          </div>
+        )}
+
+        {error && (
+          <div style={{ background: "#FDF2F2", border: `1px solid ${RED}`, borderRadius: 8, padding: "16px 20px", color: RED, fontFamily: "sans-serif", fontSize: 14, marginBottom: 20 }}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {result && (
+          <div style={{ background: "#fff", borderRadius: 12, border: `1.5px solid ${TEAL}`, padding: 28, boxShadow: "0 2px 12px rgba(11,110,110,0.08)" }}>
+            <div style={{ color: TEAL, fontSize: 15, fontWeight: "bold", marginBottom: 16, fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 1 }}>✅ Form Completed</div>
+            <p style={{ fontFamily: "sans-serif", fontSize: 13, color: "#5A7A8A", marginBottom: 20 }}>
+              <strong style={{ color: NAVY }}>{result.form_title}</strong> — {result.summary}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
+              {result.fields.map((f, i) => (
+                <div key={i} style={{ background: "#F7FBFB", border: "1px solid #D0E8E8", borderRadius: 8, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 11, color: "#7A9AA0", fontFamily: "sans-serif", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{f.label}</div>
+                  <div style={{ fontSize: 14, color: NAVY, fontFamily: "Georgia, serif" }}>{f.value}</div>
+                </div>
+              ))}
+            </div>
+            {result.unfilled_fields?.length > 0 && (
+              <div style={{ background: "#FEF9EC", border: "1px solid #E8C96A", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontFamily: "sans-serif", fontSize: 13, color: "#8A6A10" }}>
+                <strong>Fields needing your input:</strong> {result.unfilled_fields.join(", ")}
+              </div>
+            )}
+            <button
+              onClick={() => generateDownload(result.form_title, result.fields, result.fileName)}
+              style={{ background: NAVY, color: "#fff", border: "none", borderRadius: 8, padding: "14px 28px", fontSize: 14, fontFamily: "sans-serif", fontWeight: "bold", cursor: "pointer" }}
+            >
+              ⬇️ Download Completed Form
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
