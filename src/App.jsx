@@ -39,25 +39,30 @@ async function fillPdf(pdfArrayBuffer, fieldMap) {
     if (value === null || value === undefined || value === "") {
       skippedFields.push(fieldName);
       continue;
-    }
-    try {
+    }try {
       const typeName = field.constructor.name;
       if (typeName === "PDFTextField") {
-        field.setText(String(value));
+        const safeVal = value === null || value === undefined ? "" : String(value);
+        field.setText(safeVal);
         filledFields.push(fieldName);
       } else if (typeName === "PDFCheckBox") {
         if (value === true || value === "true" || value === "yes" || value === "Yes") {
           field.check();
-          filledFields.push(fieldName);
         } else {
-          skippedFields.push(fieldName);
+          field.uncheck();
         }
+        filledFields.push(fieldName);
       } else if (typeName === "PDFRadioGroup") {
-        const options = field.getOptions();
-        if (options.includes(String(value))) {
-          field.select(String(value));
-          filledFields.push(fieldName);
-        } else {
+        try {
+          const options = field.getOptions();
+          const strVal = String(value);
+          if (options.length > 0 && options.includes(strVal)) {
+            field.select(strVal);
+            filledFields.push(fieldName);
+          } else {
+            skippedFields.push(fieldName);
+          }
+        } catch {
           skippedFields.push(fieldName);
         }
       } else {
