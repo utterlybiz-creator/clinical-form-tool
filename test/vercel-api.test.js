@@ -113,3 +113,62 @@ test("Claude connection failures return a useful safe error", async () => {
     else process.env.ANTHROPIC_API_KEY = originalApiKey;
   }
 });
+
+test("semantic form aliases are normalized and forced into human review", async () => {
+  const originalApiKey = process.env.ANTHROPIC_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
+  global.fetch = async (url, options) => {
+    assert.equal(url, "https://api.anthropic.com/v1/messages");
+    const requestBody = JSON.parse(options.body);
+    const prompt = requestBody.messages[0].content.find((block) => block.type === "text").text;
+    assert.match(prompt, /"name":"tel".*"semanticHints":\["tel","telephone","phone","phone number","contact number"\]/);
+    assert.match(requestBody.system, /White.*Caucasian/);
+    assert.match(requestBody.system, /tel, telephone, phone/);
+
+    return {
+      ok: true,
+      headers: { get: () => "request-semantic-test" },
+      json: async () => ({
+        model: "claude-sonnet-5",
+        stop_reason: "end_turn",
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            assignments: [
+              { name: "race", value: "White", confidence: 0.98 },
+              { name: "tel", value: "905-555-0100", confidence: 0.96 },
+            ],
+          }),
+        }],
+      }),
+    };
+  };
+
+  try {
+    const result = await mapFieldsWithClaude({
+      fields: [
+        { name: "race", type: "Dropdown", options: ["Caucasian", "Black", "Asian"] },
+        { name: "tel", type: "TextField", options: [] },
+      ],
+      freeText: "Race: White. Phone number: 905-555-0100.",
+      pdfBase64: "JVBERi0xLjQK",
+    });
+
+    assert.deepEqual(result.assignments[0], {
+      name: "race",
+      value: "Caucasian",
+      confidence: 0.69,
+      semanticMatch: true,
+    });
+    assert.deepEqual(result.assignments[1], {
+      name: "tel",
+      value: "905-555-0100",
+      confidence: 0.96,
+    });
+  } finally {
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalApiKey;
+  }
+});
