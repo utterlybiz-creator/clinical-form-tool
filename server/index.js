@@ -153,7 +153,7 @@ function buildOutputSchema(fields) {
                 { type: "null" },
               ],
             },
-            confidence: { type: "number", minimum: 0, maximum: 1 },
+            confidence: { type: "number" },
           },
           required: ["name", "value", "confidence"],
           additionalProperties: false,

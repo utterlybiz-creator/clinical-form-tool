@@ -54,6 +54,10 @@ test("Claude requests trim surrounding whitespace from the configured API key", 
   global.fetch = async (url, options) => {
     assert.equal(url, "https://api.anthropic.com/v1/messages");
     assert.equal(options.headers["x-api-key"], "sk-ant-test-key");
+    const requestBody = JSON.parse(options.body);
+    const confidenceSchema = requestBody.output_config.format.schema
+      .properties.assignments.items.properties.confidence;
+    assert.deepEqual(confidenceSchema, { type: "number" });
     return {
       ok: true,
       headers: { get: () => "request-test" },
