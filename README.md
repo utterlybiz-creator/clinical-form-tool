@@ -114,7 +114,13 @@ Claude's output is a proposal, not the completed clinical document. The applicat
 
 ## Semantic matching
 
-The server supplies Claude with approved field-label equivalents such as `tel`, `telephone`, and `phone`. A deliberately small server-side option crosswalk also converts explicitly documented `White` to a form's `Caucasian` option when that is the single equivalent choice. Semantic conversions are capped below the low-confidence threshold and labelled **Semantic match — confirm** in the review screen. Sensitive attributes are never inferred from indirect information, and ambiguous values remain blank.
+Claude matches form fields using healthcare context, including standard clinical abbreviations, equivalent clinical terms, administrative synonyms, negation, and the meaning of supplied form options. Examples include `HTN` → `Hypertension`, `T2DM` → `Type 2 diabetes`, `NKDA` → `No known drug allergies`, `BID` → `Twice daily`, `WBC` → `white blood cell count`, and `phone number` → `tel`.
+
+Every proposed value must include a short verbatim passage from the clinical note. The server rejects evidence that is not present in the note, caps semantic matches below the low-confidence threshold, and labels them **Healthcare semantic match — confirm**. The review screen shows the source passage beside the proposed field value.
+
+Safety rules prevent family history from becoming a patient diagnosis, suspected diagnoses from becoming confirmed diagnoses, discontinued medicines from becoming current medicines, and adverse effects from becoming allergies without explicit documentation. The model must also distinguish a negative finding from missing information, and it must never infer sensitive attributes or diagnose a condition from symptoms alone. Unknown, contradictory, or unsupported values remain blank.
+
+This feature is a clinician-reviewed mapping aid, not a complete medical ontology or an autonomous diagnostic system. Healthcare semantic matches always require human confirmation before the PDF is generated.
 
 ## Main files
 
