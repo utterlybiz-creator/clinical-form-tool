@@ -3,6 +3,11 @@ import "./styles.css";
 
 const LOW_CONFIDENCE = 0.7;
 const MAX_PDF_SIZE_BYTES = 3 * 1024 * 1024;
+const EVIDENCE_LABELS = {
+  patient_report: "Patient reported",
+  clinician_observation: "Clinician observed",
+  record_documentation: "Documented in note",
+};
 
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
@@ -43,6 +48,7 @@ function FieldEditor({ field, assignment, onChange }) {
   const inputId = `field-${field.name.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const confidence = assignment.confidence || 0;
   const hasValue = assignment.value !== null && assignment.value !== "";
+  const evidenceLabel = EVIDENCE_LABELS[assignment.evidenceType] || "Documented in note";
 
   let editor;
   if (!field.supported) {
@@ -126,7 +132,7 @@ function FieldEditor({ field, assignment, onChange }) {
       {editor}
       {assignment.sourceText && !assignment.edited && (
         <div className="source-evidence">
-          <strong>Matched from note:</strong> <q>{assignment.sourceText}</q>
+          <strong>Matched from note ({evidenceLabel}):</strong> <q>{assignment.sourceText}</q>
         </div>
       )}
       {field.maxLength && <small>Maximum {field.maxLength} characters</small>}
@@ -258,6 +264,7 @@ export default function App() {
           confidence: 1,
           semanticMatch: false,
           sourceText: null,
+          evidenceType: null,
           edited: true,
         }
         : assignment
