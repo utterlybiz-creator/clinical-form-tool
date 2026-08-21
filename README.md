@@ -122,6 +122,14 @@ Safety rules prevent family history from becoming a patient diagnosis, suspected
 
 This feature is a clinician-reviewed mapping aid, not a complete medical ontology or an autonomous diagnostic system. Healthcare semantic matches always require human confirmation before the PDF is generated.
 
+## Medication context
+
+Medication matching recognizes unambiguous brand/generic relationships, route and frequency abbreviations, dosage forms, strength, dose, formulation, PRN use, adherence, and whether treatment is current, held, discontinued, historical, or only being considered. Examples include `Synthroid` → `levothyroxine`, `Tylenol` → `acetaminophen`, `PO` → `oral`, `q6h PRN` → `every 6 hours as needed`, and `XR` → `extended-release`.
+
+Medication safeguards keep a drug class distinct from a specific product, preserve strength and formulation, distinguish prescribed medication from medication actually being taken, and keep scheduled therapy separate from PRN use. The model does not convert a generic ingredient to an ambiguous brand, guess sound-alike names, drop ingredients from combination products, treat a discontinued medicine as current, or turn an adverse effect into an allergy. Ambiguous medication identities remain blank.
+
+This implementation does not send medication names to an additional external formulary service. Brand/generic or abbreviation conversions are semantic proposals with visible source evidence, capped confidence, and mandatory clinician review.
+
 ## Disability and functional context
 
 The same semantic layer recognizes explicitly documented disability and functional context across ADLs and IADLs, mobility and gait aids, transfers, physical and cognitive tolerances, communication, sensory function, endurance, episodic limitations, participation, and workplace or school accommodations. It can map statements such as `needs help bathing`, `cannot stand longer than 10 minutes`, `uses a walker`, or `symptoms flare unpredictably` to compatible form fields and supplied options.
