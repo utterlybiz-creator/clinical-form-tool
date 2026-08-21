@@ -236,9 +236,14 @@ function validateAssignments(payload, fields) {
 }
 
 export async function mapFieldsWithClaude({ fields, freeText, pdfBase64 }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = typeof process.env.ANTHROPIC_API_KEY === "string"
+    ? process.env.ANTHROPIC_API_KEY.trim()
+    : "";
   if (!apiKey) {
     throw new HttpError(503, "The server is missing ANTHROPIC_API_KEY configuration.");
+  }
+  if (/[\r\n\0]/.test(apiKey)) {
+    throw new HttpError(503, "ANTHROPIC_API_KEY contains invalid spacing or line breaks.");
   }
 
   const system = `You are a clinical documentation assistant. Map facts from clinical notes into an uploaded medical form.
@@ -253,40 +258,53 @@ Do not sign forms or provide clinician attestation.`;
   const userText = `PDF field metadata:\n${JSON.stringify(fields)}\n\nClinical notes:\n${freeText}`;
   const maxTokens = Math.min(16_000, Math.max(2_000, fields.length * 60));
 
-  const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      thinking: { type: "disabled" },
-      system,
-      messages: [{
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: pdfBase64,
-            },
-          },
-          { type: "text", text: userText },
-        ],
-      }],
-      output_config: {
-        format: {
-          type: "json_schema",
-          schema: buildOutputSchema(fields),
-        },
+  let anthropicResponse;
+  try {
+    anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
       },
-    }),
-  });
+      body: JSON.stringify({
+        model,
+        max_tokens: maxTokens,
+        thinking: { type: "disabled" },
+        system,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: pdfBase64,
+              },
+            },
+            { type: "text", text: userText },
+          ],
+        }],
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: buildOutputSchema(fields),
+          },
+        },
+      }),
+    });
+  } catch (error) {
+    console.error("Claude request failed before a response was received.", {
+      name: error?.name,
+      code: error?.code || error?.cause?.code,
+      message: error?.message,
+    });
+    throw new HttpError(
+      502,
+      "The server could not connect to Claude. Check the API key for extra spaces or line breaks, then try again.",
+    );
+  }
 
   const requestId = anthropicResponse.headers.get("request-id") || undefined;
   let data;
