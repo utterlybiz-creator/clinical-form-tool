@@ -117,6 +117,9 @@ function FieldEditor({ field, assignment, onChange }) {
         <div className="field-badges">
           <span>{field.type}</span>
           {field.required && <span>Required</span>}
+          {assignment.semanticMatch && !assignment.edited && (
+            <span className="semantic-badge">Semantic match — confirm</span>
+          )}
           {hasValue && <span>{Math.round(confidence * 100)}% AI confidence</span>}
         </div>
       </div>
@@ -244,7 +247,7 @@ export default function App() {
   const updateAssignment = (name, value) => {
     setAssignments((current) => current.map((assignment) => (
       assignment.name === name
-        ? { ...assignment, value, confidence: 1, edited: true }
+        ? { ...assignment, value, confidence: 1, semanticMatch: false, edited: true }
         : assignment
     )));
   };
