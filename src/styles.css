@@ -119,6 +119,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
 .field-heading label { overflow-wrap: anywhere; color: #17324a; font-weight: 750; }
 .field-badges { display: flex; justify-content: flex-end; gap: 5px; flex-wrap: wrap; }
 .field-badges span { padding: 3px 7px; color: #4c6473; background: #edf2f5; border-radius: 999px; font-size: 0.68rem; white-space: nowrap; }
+.field-badges .semantic-badge { color: #704f00; background: #fff0b8; }
 .field-row input[type="text"], .field-row select, .field-row textarea { width: 100%; padding: 10px 11px; color: #17324a; background: white; border: 1px solid #b9c7d0; border-radius: 7px; }
 .field-row select[multiple] { min-height: 100px; }
 .field-row small { color: #718692; font-size: 0.72rem; }
