@@ -276,6 +276,165 @@ test("healthcare semantic matches include evidence and are forced into human rev
   }
 });
 
+test("medication semantics preserve identity and details while rejecting unsafe guesses", async () => {
+  const originalApiKey = process.env.ANTHROPIC_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
+  global.fetch = async (url, options) => {
+    assert.equal(url, "https://api.anthropic.com/v1/messages");
+    const requestBody = JSON.parse(options.body);
+    assert.match(requestBody.system, /Synthroid\/levothyroxine/);
+    assert.match(requestBody.system, /Tylenol\/acetaminophen/);
+    assert.match(requestBody.system, /PO\/oral/);
+    assert.match(requestBody.system, /PRN\/as needed/);
+    assert.match(requestBody.system, /XR or ER\/extended-release/);
+    assert.match(requestBody.system, /medication class is not a specific medication/);
+    assert.match(requestBody.system, /Do not convert a generic ingredient to a brand/);
+    assert.match(requestBody.system, /similar-looking, or sound-alike medication names/);
+    assert.match(requestBody.system, /scheduled medication distinct from PRN use/);
+
+    return {
+      ok: true,
+      headers: { get: () => "request-medication-test" },
+      json: async () => ({
+        model: "claude-sonnet-5",
+        stop_reason: "end_turn",
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            assignments: [
+              {
+                name: "thyroidMedication",
+                value: "Levothyroxine",
+                confidence: 0.99,
+                matchType: "semantic",
+                sourceText: "Synthroid",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "thyroidStrength",
+                value: "50 mcg",
+                confidence: 0.99,
+                matchType: "exact",
+                sourceText: "50 mcg",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "thyroidRoute",
+                value: "Oral",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "PO",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "thyroidFrequency",
+                value: "Once daily",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "daily",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "analgesicMedication",
+                value: "Acetaminophen",
+                confidence: 0.99,
+                matchType: "semantic",
+                sourceText: "Tylenol",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "analgesicFrequency",
+                value: "Every 6 hours as needed",
+                confidence: 0.97,
+                matchType: "semantic",
+                sourceText: "q6h PRN",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "metforminFormulation",
+                value: "Extended-release",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "Metformin XR",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "currentMetformin",
+                value: true,
+                confidence: 0,
+                matchType: "unsupported",
+                sourceText: null,
+                evidenceType: "not_applicable",
+              },
+              {
+                name: "codeineAllergy",
+                value: true,
+                confidence: 0,
+                matchType: "unsupported",
+                sourceText: null,
+                evidenceType: "not_applicable",
+              },
+              {
+                name: "specificGlp1Medication",
+                value: "Ozempic",
+                confidence: 0,
+                matchType: "unsupported",
+                sourceText: null,
+                evidenceType: "not_applicable",
+              },
+            ],
+          }),
+        }],
+      }),
+    };
+  };
+
+  try {
+    const result = await mapFieldsWithClaude({
+      fields: [
+        { name: "thyroidMedication", type: "Dropdown", options: ["Levothyroxine", "Liothyronine"] },
+        { name: "thyroidStrength", type: "TextField", options: [] },
+        { name: "thyroidRoute", type: "Dropdown", options: ["Oral", "Sublingual"] },
+        { name: "thyroidFrequency", type: "Dropdown", options: ["Once daily", "Twice daily"] },
+        { name: "analgesicMedication", type: "Dropdown", options: ["Acetaminophen", "Ibuprofen"] },
+        { name: "analgesicFrequency", type: "Dropdown", options: ["Every 6 hours as needed", "Every 4 hours"] },
+        { name: "metforminFormulation", type: "Dropdown", options: ["Immediate-release", "Extended-release"] },
+        { name: "currentMetformin", type: "CheckBox", options: [] },
+        { name: "codeineAllergy", type: "CheckBox", options: [] },
+        { name: "specificGlp1Medication", type: "Dropdown", options: ["Ozempic", "Wegovy", "Mounjaro"] },
+      ],
+      freeText: "Current medications: Synthroid 50 mcg PO daily. Tylenol 500 mg PO q6h PRN pain. Metformin XR 500 mg BID was discontinued. Patient says codeine caused nausea. Also takes a GLP-1 medication but cannot recall the name.",
+      pdfBase64: "JVBERi0xLjQK",
+    });
+
+    assert.deepEqual(result.assignments.map(({ name, value, confidence }) => ({
+      name,
+      value,
+      confidence,
+    })), [
+      { name: "thyroidMedication", value: "Levothyroxine", confidence: 0.69 },
+      { name: "thyroidStrength", value: "50 mcg", confidence: 0.99 },
+      { name: "thyroidRoute", value: "Oral", confidence: 0.69 },
+      { name: "thyroidFrequency", value: "Once daily", confidence: 0.69 },
+      { name: "analgesicMedication", value: "Acetaminophen", confidence: 0.69 },
+      { name: "analgesicFrequency", value: "Every 6 hours as needed", confidence: 0.69 },
+      { name: "metforminFormulation", value: "Extended-release", confidence: 0.69 },
+      { name: "currentMetformin", value: null, confidence: 0 },
+      { name: "codeineAllergy", value: null, confidence: 0 },
+      { name: "specificGlp1Medication", value: null, confidence: 0 },
+    ]);
+    for (const assignment of result.assignments.slice(0, 7)) {
+      assert.ok(assignment.sourceText);
+      assert.equal(assignment.evidenceType, "record_documentation");
+    }
+  } finally {
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalApiKey;
+  }
+});
+
 test("disability context maps explicit function while preserving evidence provenance", async () => {
   const originalApiKey = process.env.ANTHROPIC_API_KEY;
   const originalFetch = global.fetch;
