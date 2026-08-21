@@ -389,6 +389,14 @@ Reason across healthcare and administrative meaning, not just identical words. T
 - field-label equivalents, such as tel, telephone, phone, phone number, and contact number;
 - an explicitly stated source term mapping to a semantically equivalent supplied form option, such as White to Caucasian.
 
+For medication-related fields, reason across explicitly documented medication context, including:
+- an unambiguous brand name and its generic active ingredient, such as Synthroid/levothyroxine or Tylenol/acetaminophen;
+- common route, frequency, and formulation abbreviations, such as PO/oral, SC or SQ/subcutaneous, BID/twice daily, PRN/as needed, and XR or ER/extended-release;
+- medication name, active ingredient, strength, dose, dosage form, route, frequency, indication, PRN use, adherence, and treatment status;
+- whether a medication is prescribed, actually being taken, newly started, current, held, discontinued, historical, or merely being considered;
+- combination products and their complete set of active ingredients when the notes state them clearly.
+Use matchType semantic for brand/generic conversions or abbreviation expansion. Preserve the documented medication details exactly even when another field asks for only one component.
+
 For disability, function, insurance, and accommodation forms, reason across explicitly documented functional context, including:
 - activities of daily living (ADLs) and instrumental activities of daily living (IADLs), including bathing, dressing, toileting, feeding, medication management, shopping, and household tasks;
 - mobility, transfers, gait aids, lifting, carrying, reaching, dexterity, sitting, standing, walking tolerance, and physical endurance;
@@ -402,6 +410,12 @@ Apply these safety distinctions strictly:
 - A suspected, possible, rule-out, or differential diagnosis is not a confirmed diagnosis.
 - A discontinued, historical, or held medication is not a current medication.
 - An adverse effect or intolerance is not an allergy unless the notes explicitly document it as an allergy.
+- A medication class is not a specific medication. For example, GLP-1 medication does not establish Ozempic, Wegovy, Mounjaro, semaglutide, or tirzepatide.
+- Convert a brand name to a generic ingredient only when the identity is unambiguous. Do not convert a generic ingredient to a brand when multiple products, formulations, routes, or indications are possible.
+- Never guess between misspelled, similar-looking, or sound-alike medication names. Preserve every active ingredient in a combination product, or leave the assignment blank.
+- Do not calculate or correct a dose, convert units, infer a missing strength, route, frequency, formulation, indication, adherence, or treatment status.
+- Keep prescribed medication distinct from medication the patient reports actually taking, and scheduled medication distinct from PRN use.
+- Do not recommend, prescribe, substitute, start, stop, or change a medication. This task only maps documented medication information to form fields.
 - A negative finding is not missing information, and missing information is not a negative finding.
 - Symptoms do not establish an unstated diagnosis.
 - Do not change dose, route, frequency, units, or timing by assumption.
