@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./styles.css";
 
 const LOW_CONFIDENCE = 0.7;
-const MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024;
+const MAX_PDF_SIZE_BYTES = 3 * 1024 * 1024;
 
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
@@ -182,7 +182,7 @@ export default function App() {
       return;
     }
     if (file.size > MAX_PDF_SIZE_BYTES) {
-      setError("The PDF must be smaller than 20 MB.");
+      setError("The PDF must be smaller than 3 MB for secure processing on this service.");
       return;
     }
     setPdfFile(file);

@@ -1,7 +1,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, isAbsolute, join, normalize, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 const distDirectory = join(projectRoot, "dist");
@@ -9,8 +9,8 @@ const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || "0.0.0.0";
 const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
-const MAX_REQUEST_BYTES = 30 * 1024 * 1024;
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 4_400_000;
+const MAX_PDF_BYTES = 3 * 1024 * 1024;
 const MAX_NOTES_LENGTH = 50_000;
 const MAX_FIELDS = 750;
 
@@ -36,7 +36,7 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml",
 };
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
@@ -100,7 +100,7 @@ function validateFields(input) {
   });
 }
 
-function validateRequest(body) {
+export function validateRequest(body) {
   if (!body || typeof body !== "object") {
     throw new HttpError(400, "The request is incomplete.");
   }
@@ -122,7 +122,7 @@ function validateRequest(body) {
   }
 
   if (pdfBytes.length === 0 || pdfBytes.length > MAX_PDF_BYTES) {
-    throw new HttpError(413, "The PDF must be smaller than 20 MB.");
+    throw new HttpError(413, "The PDF must be smaller than 3 MB.");
   }
   if (pdfBytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
     throw new HttpError(400, "The uploaded file is not a valid PDF.");
@@ -235,7 +235,7 @@ function validateAssignments(payload, fields) {
   });
 }
 
-async function mapFieldsWithClaude({ fields, freeText, pdfBase64 }) {
+export async function mapFieldsWithClaude({ fields, freeText, pdfBase64 }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new HttpError(503, "The server is missing ANTHROPIC_API_KEY configuration.");
@@ -365,25 +365,36 @@ function serveStatic(request, response) {
   createReadStream(filePath).pipe(response);
 }
 
-const server = createServer(async (request, response) => {
-  try {
-    if ((request.url || "").startsWith("/api/")) {
-      await handleApi(request, response);
-    } else if (request.method === "GET" || request.method === "HEAD") {
-      serveStatic(request, response);
-    } else {
-      sendJson(response, 405, { error: "Method not allowed." });
+export function createClinicalFormServer() {
+  return createServer(async (request, response) => {
+    try {
+      if ((request.url || "").startsWith("/api/")) {
+        await handleApi(request, response);
+      } else if (request.method === "GET" || request.method === "HEAD") {
+        serveStatic(request, response);
+      } else {
+        sendJson(response, 405, { error: "Method not allowed." });
+      }
+    } catch (error) {
+      const status = error instanceof HttpError ? error.status : 500;
+      const message = error instanceof HttpError ? error.message : "Unexpected server error.";
+      sendJson(response, status, {
+        error: message,
+        ...(error.requestId ? { requestId: error.requestId } : {}),
+      });
     }
-  } catch (error) {
-    const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof HttpError ? error.message : "Unexpected server error.";
-    sendJson(response, status, {
-      error: message,
-      ...(error.requestId ? { requestId: error.requestId } : {}),
-    });
-  }
-});
+  });
+}
 
-server.listen(port, host, () => {
-  console.log(`Clinical Form Tool listening on port ${port}`);
-});
+export function startServer() {
+  const server = createClinicalFormServer();
+  server.listen(port, host, () => {
+    console.log(`Clinical Form Tool listening on port ${port}`);
+  });
+  return server;
+}
+
+const isDirectRun = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) startServer();
