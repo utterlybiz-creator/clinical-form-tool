@@ -118,12 +118,17 @@ function FieldEditor({ field, assignment, onChange }) {
           <span>{field.type}</span>
           {field.required && <span>Required</span>}
           {assignment.semanticMatch && !assignment.edited && (
-            <span className="semantic-badge">Semantic match — confirm</span>
+            <span className="semantic-badge">Healthcare semantic match — confirm</span>
           )}
           {hasValue && <span>{Math.round(confidence * 100)}% AI confidence</span>}
         </div>
       </div>
       {editor}
+      {assignment.sourceText && !assignment.edited && (
+        <div className="source-evidence">
+          <strong>Matched from note:</strong> <q>{assignment.sourceText}</q>
+        </div>
+      )}
       {field.maxLength && <small>Maximum {field.maxLength} characters</small>}
     </div>
   );
@@ -247,7 +252,14 @@ export default function App() {
   const updateAssignment = (name, value) => {
     setAssignments((current) => current.map((assignment) => (
       assignment.name === name
-        ? { ...assignment, value, confidence: 1, semanticMatch: false, edited: true }
+        ? {
+          ...assignment,
+          value,
+          confidence: 1,
+          semanticMatch: false,
+          sourceText: null,
+          edited: true,
+        }
         : assignment
     )));
   };
