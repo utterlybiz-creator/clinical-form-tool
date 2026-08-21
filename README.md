@@ -112,6 +112,10 @@ Supporting arbitrary flat forms is a separate coordinate-mapping feature. It req
 
 Claude's output is a proposal, not the completed clinical document. The application assigns confidence indicators, preserves unsupported values as blank, blocks automated signatures, and requires review before generation. The clinician remains responsible for confirming the source facts, field meaning, selected options, and final PDF.
 
+## Semantic matching
+
+The server supplies Claude with approved field-label equivalents such as `tel`, `telephone`, and `phone`. A deliberately small server-side option crosswalk also converts explicitly documented `White` to a form's `Caucasian` option when that is the single equivalent choice. Semantic conversions are capped below the low-confidence threshold and labelled **Semantic match — confirm** in the review screen. Sensitive attributes are never inferred from indirect information, and ambiguous values remain blank.
+
 ## Main files
 
 - `src/App.jsx`: browser workflow and human review screen
