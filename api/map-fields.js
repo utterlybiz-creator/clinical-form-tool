@@ -59,6 +59,13 @@ export default async function handler(request, response) {
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500;
     const message = error instanceof HttpError ? error.message : "Unexpected server error.";
+    if (!(error instanceof HttpError)) {
+      console.error("Unhandled map-fields error.", {
+        name: error?.name,
+        code: error?.code || error?.cause?.code,
+        message: error?.message,
+      });
+    }
     return sendJson(response, status, {
       error: message,
       ...(error.requestId ? { requestId: error.requestId } : {}),
