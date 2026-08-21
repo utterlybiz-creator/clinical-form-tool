@@ -181,8 +181,24 @@ function buildOutputSchema(fields) {
                 { type: "null" },
               ],
             },
+            evidenceType: {
+              type: "string",
+              enum: [
+                "patient_report",
+                "clinician_observation",
+                "record_documentation",
+                "not_applicable",
+              ],
+            },
           },
-          required: ["name", "value", "confidence", "matchType", "sourceText"],
+          required: [
+            "name",
+            "value",
+            "confidence",
+            "matchType",
+            "sourceText",
+            "evidenceType",
+          ],
           additionalProperties: false,
         },
       },
@@ -303,7 +319,17 @@ function validateAssignments(payload, fields, freeText) {
 
     const declaredMatchType = assignment.matchType;
     const sourceText = validatedSourceText(assignment.sourceText, freeText);
-    if (!["exact", "semantic"].includes(declaredMatchType) || !sourceText) {
+    const evidenceType = assignment.evidenceType;
+    const supportedEvidenceTypes = [
+      "patient_report",
+      "clinician_observation",
+      "record_documentation",
+    ];
+    if (
+      !["exact", "semantic"].includes(declaredMatchType)
+      || !sourceText
+      || !supportedEvidenceTypes.includes(evidenceType)
+    ) {
       assignmentByName.set(field.name, {
         name: field.name,
         value: null,
@@ -327,6 +353,7 @@ function validateAssignments(payload, fields, freeText) {
           ? Math.min(modelConfidence, SEMANTIC_MATCH_CONFIDENCE_CAP)
           : modelConfidence,
       ...(normalized.value !== null ? { sourceText } : {}),
+      ...(normalized.value !== null ? { evidenceType } : {}),
       ...(semanticMatch && normalized.value !== null ? { semanticMatch: true } : {}),
     });
   }
@@ -362,6 +389,14 @@ Reason across healthcare and administrative meaning, not just identical words. T
 - field-label equivalents, such as tel, telephone, phone, phone number, and contact number;
 - an explicitly stated source term mapping to a semantically equivalent supplied form option, such as White to Caucasian.
 
+For disability, function, insurance, and accommodation forms, reason across explicitly documented functional context, including:
+- activities of daily living (ADLs) and instrumental activities of daily living (IADLs), including bathing, dressing, toileting, feeding, medication management, shopping, and household tasks;
+- mobility, transfers, gait aids, lifting, carrying, reaching, dexterity, sitting, standing, walking tolerance, and physical endurance;
+- cognition, memory, attention, communication, emotional regulation, sensory function, and cognitive endurance;
+- work, school, caregiving, community participation, required accommodations, and whether limitations are episodic or fluctuating;
+- explicitly stated frequency, duration, severity, assistance level, and expected period of limitation.
+Examples include "needs help bathing" mapping to a supplied Needs assistance option, "cannot stand longer than 10 minutes" mapping to an applicable standing-tolerance category, "uses a walker" mapping to mobility aid, and "symptoms flare unpredictably" mapping to episodic limitation.
+
 Apply these safety distinctions strictly:
 - Family history is not the patient's diagnosis.
 - A suspected, possible, rule-out, or differential diagnosis is not a confirmed diagnosis.
@@ -370,11 +405,18 @@ Apply these safety distinctions strictly:
 - A negative finding is not missing information, and missing information is not a negative finding.
 - Symptoms do not establish an unstated diagnosis.
 - Do not change dose, route, frequency, units, or timing by assumption.
+- A diagnosis, impairment, or symptom does not by itself prove disability, incapacity, or a specific functional limitation.
+- Do not convert symptoms into functional restrictions unless the notes explicitly describe their effect on function.
+- Keep patient-reported limitations distinct from clinician-observed findings. Never place a patient report in a field that specifically requests an objective or observed finding.
+- Keep actual performance distinct from theoretical capacity, and an accommodation or modified duty distinct from inability to work.
+- Keep current limitations distinct from past limitations. Do not infer that a limitation is permanent, temporary, partial, total, continuous, or episodic unless the notes state it.
+- Do not decide legal, insurance, workplace, tax-credit, or benefit eligibility. Do not supply an unstated prognosis, return-to-work date, restriction, or duration.
 Never infer race, ethnicity, sex, gender, or another sensitive attribute from a name, appearance, nationality, language, or other indirect information. Map a sensitive attribute only when the notes state it explicitly.
 
 For checkboxes use booleans. For radio groups, dropdowns, and option lists, return the exact supplied form option selected after semantic reasoning. The server may also validate a narrowly approved fallback conversion when source wording is returned instead.
 Set matchType to exact only when no clinical synonym, abbreviation, negation conversion, field-label equivalence, or option conversion was needed. Set matchType to semantic whenever any such interpretation was needed. Set matchType to unsupported and use null when the value is unknown, ambiguous, contradictory, or not directly documented.
-For unsupported assignments use sourceText null. Never choose the closest-sounding option when its meaning is uncertain.
+For each supported assignment, set evidenceType to patient_report when the passage is attributed to the patient, clinician_observation when it records the clinician's examination or direct observation, or record_documentation when the fact is documented without either attribution. When provenance is unclear, use record_documentation, never clinician_observation.
+For unsupported assignments use sourceText null and evidenceType not_applicable. Never choose the closest-sounding option when its meaning is uncertain.
 Confidence means how directly the source supports the assignment: 1 is explicit, 0 is unsupported.
 Do not sign forms or provide clinician attestation.`;
 
