@@ -116,11 +116,17 @@ Claude's output is a proposal, not the completed clinical document. The applicat
 
 Claude matches form fields using healthcare context, including standard clinical abbreviations, equivalent clinical terms, administrative synonyms, negation, and the meaning of supplied form options. Examples include `HTN` → `Hypertension`, `T2DM` → `Type 2 diabetes`, `NKDA` → `No known drug allergies`, `BID` → `Twice daily`, `WBC` → `white blood cell count`, and `phone number` → `tel`.
 
-Every proposed value must include a short verbatim passage from the clinical note. The server rejects evidence that is not present in the note, caps semantic matches below the low-confidence threshold, and labels them **Healthcare semantic match — confirm**. The review screen shows the source passage beside the proposed field value.
+Every proposed value must include a short verbatim passage from the clinical note. The server rejects evidence that is not present in the note, caps semantic matches below the low-confidence threshold, and labels them **Healthcare semantic match — confirm**. The review screen shows the source passage and identifies it as patient-reported, clinician-observed, or otherwise documented in the note.
 
 Safety rules prevent family history from becoming a patient diagnosis, suspected diagnoses from becoming confirmed diagnoses, discontinued medicines from becoming current medicines, and adverse effects from becoming allergies without explicit documentation. The model must also distinguish a negative finding from missing information, and it must never infer sensitive attributes or diagnose a condition from symptoms alone. Unknown, contradictory, or unsupported values remain blank.
 
 This feature is a clinician-reviewed mapping aid, not a complete medical ontology or an autonomous diagnostic system. Healthcare semantic matches always require human confirmation before the PDF is generated.
+
+## Disability and functional context
+
+The same semantic layer recognizes explicitly documented disability and functional context across ADLs and IADLs, mobility and gait aids, transfers, physical and cognitive tolerances, communication, sensory function, endurance, episodic limitations, participation, and workplace or school accommodations. It can map statements such as `needs help bathing`, `cannot stand longer than 10 minutes`, `uses a walker`, or `symptoms flare unpredictably` to compatible form fields and supplied options.
+
+The safety rules do not treat a diagnosis as proof of disability, convert symptoms into unstated restrictions, present a patient report as a clinician observation, or equate modified duties with inability to work. The model cannot determine legal, insurance, workplace, tax-credit, or benefit eligibility, and it cannot infer permanence, prognosis, duration, or return-to-work dates. Unsupported conclusions remain blank for clinician review.
 
 ## Main files
 
