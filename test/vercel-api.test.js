@@ -224,7 +224,7 @@ test("healthcare semantic matches include evidence and are forced into human rev
               },
               {
                 name: "tel",
-                value: "905-555-0100",
+                value: "\u200b",
                 confidence: 0.96,
                 matchType: "semantic",
                 sourceText: "Phone number: 905-555-0100",
@@ -637,11 +637,11 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
               evidenceType: "record_documentation",
             },
             {
-              name: "blankPhone",
+              name: "emptyText",
               value: " \n ",
               confidence: 0.9,
               matchType: "exact",
-              sourceText: "Phone number: 905-555-0100.",
+              sourceText: "Possible pneumonia.",
               evidenceType: "record_documentation",
             },
           ],
@@ -658,7 +658,7 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
         { name: "allergy", type: "TextField", options: [] },
         { name: "confirmedDiagnosis", type: "TextField", options: [] },
         { name: "phone", type: "TextField", options: [] },
-        { name: "blankPhone", type: "TextField", options: [] },
+        { name: "emptyText", type: "TextField", options: [] },
       ],
       freeText: "Family history: hypertension. Metformin discontinued. Codeine caused nausea. Possible pneumonia. Phone number: 905-555-0100.",
       pdfBase64: "JVBERi0xLjQK",
@@ -670,7 +670,7 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
       { name: "allergy", value: null, confidence: 0 },
       { name: "confirmedDiagnosis", value: null, confidence: 0 },
       { name: "phone", value: null, confidence: 0 },
-      { name: "blankPhone", value: null, confidence: 0 },
+      { name: "emptyText", value: null, confidence: 0 },
     ]);
   } finally {
     global.fetch = originalFetch;
