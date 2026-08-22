@@ -31,6 +31,11 @@ const FIELD_LABEL_EQUIVALENCE_GROUPS = [
   ["given name", "first name", "forename"],
 ];
 
+const PHONE_FIELD_TERMS = new Set([
+  ...FIELD_LABEL_EQUIVALENCE_GROUPS[0],
+  ...FIELD_LABEL_EQUIVALENCE_GROUPS[1],
+]);
+
 const FIELD_TYPES = new Set([
   "TextField",
   "CheckBox",
@@ -236,6 +241,21 @@ function describeFields(fields) {
   });
 }
 
+function isPhoneField(name) {
+  return semanticHintsForField(name).some((hint) => PHONE_FIELD_TERMS.has(hint));
+}
+
+function phoneNumberFromEvidence(sourceText) {
+  if (typeof sourceText !== "string") return null;
+  const candidates = sourceText.match(/\+?\d[\d\s().-]{5,}\d/g) || [];
+  return candidates
+    .map((candidate) => candidate.trim().replace(/[.,;:]+$/g, ""))
+    .find((candidate) => {
+      const digitCount = candidate.replace(/\D/g, "").length;
+      return digitCount >= 7 && digitCount <= 15;
+    }) || null;
+}
+
 function matchOption(value, options) {
   if (typeof value !== "string") return { value: null, semanticMatch: false };
   const exact = options.find((option) => option === value);
@@ -291,10 +311,18 @@ function normalizeAssignment(assignment, field) {
     };
   }
   if (field.type === "TextField") {
-    const textValue = typeof value === "string" ? value.trim() : String(value).trim();
+    const rawTextValue = typeof value === "string" ? value : String(value);
+    let textValue = rawTextValue
+      .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2060\ufeff]/g, "")
+      .trim();
+    let semanticMatch = false;
+    if (!textValue && isPhoneField(field.name)) {
+      textValue = phoneNumberFromEvidence(assignment.sourceText) || "";
+      semanticMatch = Boolean(textValue);
+    }
     return {
       value: textValue || null,
-      semanticMatch: false,
+      semanticMatch,
     };
   }
 
