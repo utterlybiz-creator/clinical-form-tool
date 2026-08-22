@@ -233,7 +233,23 @@ export default function App() {
       const response = await postFieldMapping({
         pdfBase64: base64,
         freeText: freeText.trim(),
-        fields: inspection.fields.map(({ name, type, options }) => ({ name, type, options })),
+        fields: inspection.fields.map(({
+          name,
+          type,
+          options,
+          alternateName,
+          mappingName,
+          widgetDescription,
+          exportValue,
+        }) => ({
+          name,
+          type,
+          options,
+          alternateName,
+          mappingName,
+          widgetDescription,
+          exportValue,
+        })),
       }, controller.signal);
 
       const returnedByName = new Map(response.assignments.map((assignment) => [assignment.name, assignment]));
