@@ -154,6 +154,7 @@ test("healthcare semantic matches include evidence and are forced into human rev
     assert.match(requestBody.system, /discontinued, historical, or held medication/);
     assert.match(requestBody.system, /adverse effect or intolerance alone supports neither Yes nor No for an allergy field/);
     assert.match(requestBody.system, /suspected, possible, rule-out, or differential diagnosis/);
+    assert.match(requestBody.system, /when a tel field is supported by.*Phone number: 905-555-0100.*return value.*905-555-0100/s);
 
     return {
       ok: true,
@@ -635,6 +636,14 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
               sourceText: "a phone number that is not in the note",
               evidenceType: "record_documentation",
             },
+            {
+              name: "blankPhone",
+              value: " \n ",
+              confidence: 0.9,
+              matchType: "exact",
+              sourceText: "Phone number: 905-555-0100.",
+              evidenceType: "record_documentation",
+            },
           ],
         }),
       }],
@@ -649,8 +658,9 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
         { name: "allergy", type: "TextField", options: [] },
         { name: "confirmedDiagnosis", type: "TextField", options: [] },
         { name: "phone", type: "TextField", options: [] },
+        { name: "blankPhone", type: "TextField", options: [] },
       ],
-      freeText: "Family history: hypertension. Metformin discontinued. Codeine caused nausea. Possible pneumonia.",
+      freeText: "Family history: hypertension. Metformin discontinued. Codeine caused nausea. Possible pneumonia. Phone number: 905-555-0100.",
       pdfBase64: "JVBERi0xLjQK",
     });
 
@@ -660,6 +670,7 @@ test("unsupported clinical interpretations and unverified evidence remain blank"
       { name: "allergy", value: null, confidence: 0 },
       { name: "confirmedDiagnosis", value: null, confidence: 0 },
       { name: "phone", value: null, confidence: 0 },
+      { name: "blankPhone", value: null, confidence: 0 },
     ]);
   } finally {
     global.fetch = originalFetch;
