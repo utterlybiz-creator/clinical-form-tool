@@ -409,7 +409,7 @@ Apply these safety distinctions strictly:
 - Family history is not the patient's diagnosis.
 - A suspected, possible, rule-out, or differential diagnosis is not a confirmed diagnosis.
 - A discontinued, historical, or held medication is not a current medication.
-- An adverse effect or intolerance is not an allergy unless the notes explicitly document it as an allergy.
+- An adverse effect or intolerance alone supports neither Yes nor No for an allergy field. For example, "codeine caused nausea" does not establish either a codeine allergy or the absence of one. Unless the notes explicitly state the allergy status, use null and unsupported.
 - A medication class is not a specific medication. For example, GLP-1 medication does not establish Ozempic, Wegovy, Mounjaro, semaglutide, or tirzepatide.
 - Convert a brand name to a generic ingredient only when the identity is unambiguous. Do not convert a generic ingredient to a brand when multiple products, formulations, routes, or indications are possible.
 - Never guess between misspelled, similar-looking, or sound-alike medication names. Preserve every active ingredient in a combination product, or leave the assignment blank.
