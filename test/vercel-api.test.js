@@ -152,7 +152,7 @@ test("healthcare semantic matches include evidence and are forced into human rev
     assert.match(requestBody.system, /denies tobacco use/);
     assert.match(requestBody.system, /Family history is not the patient's diagnosis/);
     assert.match(requestBody.system, /discontinued, historical, or held medication/);
-    assert.match(requestBody.system, /adverse effect or intolerance is not an allergy/);
+    assert.match(requestBody.system, /adverse effect or intolerance alone supports neither Yes nor No for an allergy field/);
     assert.match(requestBody.system, /suspected, possible, rule-out, or differential diagnosis/);
 
     return {
@@ -292,6 +292,7 @@ test("medication semantics preserve identity and details while rejecting unsafe 
     assert.match(requestBody.system, /Do not convert a generic ingredient to a brand/);
     assert.match(requestBody.system, /similar-looking, or sound-alike medication names/);
     assert.match(requestBody.system, /scheduled medication distinct from PRN use/);
+    assert.match(requestBody.system, /codeine caused nausea.*does not establish either a codeine allergy or the absence of one/);
 
     return {
       ok: true,
