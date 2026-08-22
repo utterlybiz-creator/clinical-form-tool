@@ -316,9 +316,12 @@ function normalizeAssignment(assignment, field) {
       .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2060\ufeff]/g, "")
       .trim();
     let semanticMatch = false;
-    if (!textValue && isPhoneField(field.name)) {
-      textValue = phoneNumberFromEvidence(assignment.sourceText) || "";
-      semanticMatch = Boolean(textValue);
+    if (isPhoneField(field.name)) {
+      const evidencePhone = phoneNumberFromEvidence(assignment.sourceText);
+      if (evidencePhone && !phoneNumberFromEvidence(textValue)) {
+        textValue = evidencePhone;
+        semanticMatch = true;
+      }
     }
     return {
       value: textValue || null,
@@ -515,113 +518,3 @@ Do not sign forms or provide clinician attestation.`;
     );
   }
 
-  const requestId = anthropicResponse.headers.get("request-id") || undefined;
-  let data;
-  try {
-    data = await anthropicResponse.json();
-  } catch {
-    throw new HttpError(502, "Claude returned an unreadable response.");
-  }
-
-  if (!anthropicResponse.ok || data.error) {
-    const message = data?.error?.message || `Claude request failed (${anthropicResponse.status}).`;
-    const error = new HttpError(anthropicResponse.status >= 500 ? 502 : 422, message);
-    error.requestId = requestId;
-    throw error;
-  }
-  if (data.stop_reason === "refusal") {
-    throw new HttpError(422, "Claude declined to process this request.");
-  }
-
-  const text = Array.isArray(data.content)
-    ? data.content.filter((block) => block.type === "text").map((block) => block.text).join("")
-    : "";
-  if (!text) throw new HttpError(502, "Claude returned no field assignments.");
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new HttpError(502, "Claude returned invalid structured data.");
-  }
-
-  return {
-    assignments: validateAssignments(parsed, fields, freeText),
-    model: data.model || model,
-    requestId,
-  };
-}
-
-async function handleApi(request, response) {
-  if (request.method === "GET" && request.url === "/api/health") {
-    return sendJson(response, 200, { ok: true, configured: Boolean(process.env.ANTHROPIC_API_KEY) });
-  }
-
-  if (request.method === "POST" && request.url === "/api/map-fields") {
-    const body = await readJson(request);
-    const result = await mapFieldsWithClaude(validateRequest(body));
-    return sendJson(response, 200, result);
-  }
-
-  return sendJson(response, 404, { error: "API endpoint not found." });
-}
-
-function serveStatic(request, response) {
-  if (!existsSync(distDirectory)) {
-    return sendJson(response, 503, { error: "Web build not found. Run npm run build first." });
-  }
-
-  const pathname = decodeURIComponent((request.url || "/").split("?")[0]);
-  const requested = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-  const candidate = normalize(join(distDirectory, requested));
-  const relativePath = relative(distDirectory, candidate);
-  const safeCandidate = !relativePath.startsWith("..") && !isAbsolute(relativePath)
-    ? candidate
-    : join(distDirectory, "index.html");
-  const filePath = existsSync(safeCandidate) && statSync(safeCandidate).isFile()
-    ? safeCandidate
-    : join(distDirectory, "index.html");
-
-  response.writeHead(200, {
-    "Content-Type": MIME_TYPES[extname(filePath)] || "application/octet-stream",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'",
-  });
-  if (request.method === "HEAD") return response.end();
-  createReadStream(filePath).pipe(response);
-}
-
-export function createClinicalFormServer() {
-  return createServer(async (request, response) => {
-    try {
-      if ((request.url || "").startsWith("/api/")) {
-        await handleApi(request, response);
-      } else if (request.method === "GET" || request.method === "HEAD") {
-        serveStatic(request, response);
-      } else {
-        sendJson(response, 405, { error: "Method not allowed." });
-      }
-    } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
-      const message = error instanceof HttpError ? error.message : "Unexpected server error.";
-      sendJson(response, status, {
-        error: message,
-        ...(error.requestId ? { requestId: error.requestId } : {}),
-      });
-    }
-  });
-}
-
-export function startServer() {
-  const server = createClinicalFormServer();
-  server.listen(port, host, () => {
-    console.log(`Clinical Form Tool listening on port ${port}`);
-  });
-  return server;
-}
-
-const isDirectRun = process.argv[1]
-  && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isDirectRun) startServer();
