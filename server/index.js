@@ -22,19 +22,45 @@ const OPTION_EQUIVALENCE_GROUPS = [
   ["white", "caucasian"],
 ];
 
+const PHONE_FIELD_LABELS = [
+  "tel",
+  "telephone",
+  "phone",
+  "phone number",
+  "contact number",
+  "home phone",
+  "home phone number",
+  "home telephone",
+  "home tel",
+  "residential phone",
+  "landline",
+  "mobile",
+  "mobile phone",
+  "mobile number",
+  "mobile telephone",
+  "cell phone",
+  "cell phone number",
+  "cell number",
+  "cellphone",
+  "cellular phone",
+];
+
 const FIELD_LABEL_EQUIVALENCE_GROUPS = [
-  ["tel", "telephone", "phone", "phone number", "contact number"],
-  ["mobile", "mobile number", "cell", "cell phone", "cellphone"],
+  PHONE_FIELD_LABELS,
   ["dob", "date of birth", "birth date"],
   ["postal code", "postcode", "zip", "zip code"],
   ["surname", "last name", "family name"],
   ["given name", "first name", "forename"],
 ];
 
-const PHONE_FIELD_TERMS = new Set([
-  ...FIELD_LABEL_EQUIVALENCE_GROUPS[0],
-  ...FIELD_LABEL_EQUIVALENCE_GROUPS[1],
-]);
+const PHONE_FIELD_TERMS = new Set(PHONE_FIELD_LABELS);
+
+const FIELD_METADATA_KEYS = [
+  "alternateName",
+  "mappingName",
+  "widgetDescription",
+  "exportValue",
+];
 
 const FIELD_TYPES = new Set([
   "TextField",
@@ -118,7 +144,12 @@ function validateFields(input) {
       ? field.options.filter((option) => typeof option === "string").slice(0, 200)
       : [];
 
-    return { name, type, options };
+    const metadata = Object.fromEntries(FIELD_METADATA_KEYS.flatMap((key) => {
+      const value = typeof field[key] === "string" ? field[key].trim() : "";
+      return value && value.length <= 500 ? [[key, value]] : [];
+    }));
+
+    return { name, type, options, ...metadata };
   });
 }
 
@@ -225,24 +256,32 @@ function normalizeSemanticTerm(value) {
     .replace(/\s+/g, " ");
 }
 
-function semanticHintsForField(name) {
-  const normalizedName = normalizeSemanticTerm(name);
-  const paddedName = ` ${normalizedName} `;
+function fieldSemanticLabels(field) {
+  if (typeof field === "string") return [field];
+  return [field.name, ...FIELD_METADATA_KEYS.map((key) => field[key])]
+    .filter((value) => typeof value === "string" && value.trim());
+}
+
+function semanticHintsForField(field) {
+  const paddedNames = fieldSemanticLabels(field)
+    .map((label) => ` ${normalizeSemanticTerm(label)} `);
   const matchedGroups = FIELD_LABEL_EQUIVALENCE_GROUPS.filter((group) => (
-    group.some((term) => paddedName.includes(` ${normalizeSemanticTerm(term)} `))
+    group.some((term) => paddedNames.some(
+      (name) => name.includes(` ${normalizeSemanticTerm(term)} `),
+    ))
   ));
   return [...new Set(matchedGroups.flat())];
 }
 
 function describeFields(fields) {
   return fields.map((field) => {
-    const semanticHints = semanticHintsForField(field.name);
+    const semanticHints = semanticHintsForField(field);
     return semanticHints.length > 0 ? { ...field, semanticHints } : field;
   });
 }
 
-function isPhoneField(name) {
-  return semanticHintsForField(name).some((hint) => PHONE_FIELD_TERMS.has(hint));
+function isPhoneField(field) {
+  return semanticHintsForField(field).some((hint) => PHONE_FIELD_TERMS.has(hint));
 }
 
 function phoneNumberFromEvidence(sourceText) {
@@ -316,7 +355,7 @@ function normalizeAssignment(assignment, field) {
       .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200d\u2060\ufeff]/g, "")
       .trim();
     let semanticMatch = false;
-    if (isPhoneField(field.name)) {
+    if (isPhoneField(field)) {
       const evidencePhone = phoneNumberFromEvidence(assignment.sourceText);
       if (evidencePhone) {
         textValue = evidencePhone;
@@ -418,9 +457,10 @@ Reason across healthcare and administrative meaning, not just identical words. T
 - standard clinical abbreviations and equivalent terms, such as HTN/hypertension, T2DM/type 2 diabetes, NKDA/no known drug allergies, BID/twice daily, and WBC/white blood cell count;
 - diagnoses, symptoms, medications, allergies, vital signs, laboratory values, social history, family history, contact details, and demographics;
 - negation and categorical meaning, such as "denies tobacco use" mapping to a supplied No option for current smoking;
-- field-label equivalents, such as tel, telephone, phone, phone number, and contact number;
+- field-label equivalents, such as home phone, cell phone, mobile phone, tel, telephone, phone, phone number, and contact number;
 - an explicitly stated source term mapping to a semantically equivalent supplied form option, such as White to Caucasian.
 Return the usable field value, never whitespace, the full evidence sentence, or only the source label. For example, when a tel field is supported by "Phone number: 905-555-0100", return value "905-555-0100".
+For phone fields, use the field name plus alternateName, mappingName, widgetDescription, and exportValue metadata when supplied. Preserve an explicitly labeled phone type: home/landline and cell/mobile are not interchangeable when the notes distinguish them. If the notes contain multiple numbers, use the source passage for the matching type and never copy one number into every phone field. An unlabeled number may fill a generic tel/telephone/phone field, but it does not establish that the number is specifically home or mobile.
 
 For medication-related fields, reason across explicitly documented medication context, including:
 - an unambiguous brand name and its generic active ingredient, such as Synthroid/levothyroxine or Tylenol/acetaminophen;
@@ -460,7 +500,8 @@ Apply these safety distinctions strictly:
 - Do not decide legal, insurance, workplace, tax-credit, or benefit eligibility. Do not supply an unstated prognosis, return-to-work date, restriction, or duration.
 Never infer race, ethnicity, sex, gender, or another sensitive attribute from a name, appearance, nationality, language, or other indirect information. Map a sensitive attribute only when the notes state it explicitly.
 
-For checkboxes use booleans. For radio groups, dropdowns, and option lists, return the exact supplied form option selected after semantic reasoning. The server may also validate a narrowly approved fallback conversion when source wording is returned instead.
+For checkboxes use booleans and interpret the complete field metadata, including alternateName, mappingName, widgetDescription, and exportValue when present. Return true only when the cited passage explicitly affirms the checkbox concept. Return false only when the cited passage explicitly negates it. When the notes are silent, ambiguous, or merely mention a related concept, return null rather than treating absence as false. For a set of choice-like checkboxes, check only the explicitly supported choice; do not automatically assign false to every other choice. Examples: "uses a walker" can check a Uses mobility aid box; "denies tobacco use" can leave a Current smoker box unchecked with false; and "codeine caused nausea" cannot check or uncheck an Allergy box without explicit allergy status.
+For radio groups, dropdowns, and option lists, return the exact supplied form option selected after semantic reasoning. The server may also validate a narrowly approved fallback conversion when source wording is returned instead.
 Set matchType to exact only when no clinical synonym, abbreviation, negation conversion, field-label equivalence, or option conversion was needed. Set matchType to semantic whenever any such interpretation was needed. Set matchType to unsupported and use null when the value is unknown, ambiguous, contradictory, or not directly documented.
 For each supported assignment, set evidenceType to patient_report when the passage is attributed to the patient, clinician_observation when it records the clinician's examination or direct observation, or record_documentation when the fact is documented without either attribution. When provenance is unclear, use record_documentation, never clinician_observation.
 For unsupported assignments use sourceText null and evidenceType not_applicable. Never choose the closest-sounding option when its meaning is uncertain.
