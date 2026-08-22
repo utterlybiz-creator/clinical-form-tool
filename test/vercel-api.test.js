@@ -3,7 +3,7 @@ import test from "node:test";
 
 import healthHandler from "../api/health.js";
 import mapFieldsHandler from "../api/map-fields.js";
-import { HttpError, mapFieldsWithClaude } from "../server/index.js";
+import { HttpError, mapFieldsWithClaude, validateRequest } from "../server/index.js";
 
 function responseRecorder() {
   const headers = new Map();
@@ -45,6 +45,32 @@ test("Vercel map-fields function validates request bodies before Claude", async 
 
   assert.equal(response.statusCode, 400);
   assert.equal(JSON.parse(response.body).error, "Clinical notes must be between 2 and 50,000 characters.");
+});
+
+test("request validation preserves safe PDF field labels for semantic matching", () => {
+  const validated = validateRequest({
+    fields: [{
+      name: "Check Box 12",
+      type: "CheckBox",
+      options: [],
+      alternateName: "Uses mobility aid",
+      mappingName: "Mobility aid required",
+      widgetDescription: "Walker or cane",
+      exportValue: "Selected",
+    }],
+    freeText: "Uses a walker.",
+    pdfBase64: Buffer.from("%PDF-test").toString("base64"),
+  });
+
+  assert.deepEqual(validated.fields[0], {
+    name: "Check Box 12",
+    type: "CheckBox",
+    options: [],
+    alternateName: "Uses mobility aid",
+    mappingName: "Mobility aid required",
+    widgetDescription: "Walker or cane",
+    exportValue: "Selected",
+  });
 });
 
 test("Claude requests trim surrounding whitespace from the configured API key", async () => {
@@ -144,7 +170,10 @@ test("healthcare semantic matches include evidence and are forced into human rev
     assert.equal(url, "https://api.anthropic.com/v1/messages");
     const requestBody = JSON.parse(options.body);
     const prompt = requestBody.messages[0].content.find((block) => block.type === "text").text;
-    assert.match(prompt, /"name":"tel".*"semanticHints":\["tel","telephone","phone","phone number","contact number"\]/);
+    assert.match(prompt, /"name":"tel"[^}]*"semanticHints":\[[^\]]*"home phone"/);
+    assert.match(prompt, /"name":"tel"[^}]*"semanticHints":\[[^\]]*"cell phone"/);
+    assert.match(prompt, /"name":"tel"[^}]*"semanticHints":\[[^\]]*"phone number"/);
+    assert.match(prompt, /"name":"whiteBloodCellCount","type":"TextField","options":\[\]\}/);
     assert.match(requestBody.system, /HTN\/hypertension/);
     assert.match(requestBody.system, /T2DM\/type 2 diabetes/);
     assert.match(requestBody.system, /NKDA\/no known drug allergies/);
@@ -270,6 +299,133 @@ test("healthcare semantic matches include evidence and are forced into human rev
       { name: "race", value: "Caucasian" },
       { name: "tel", value: "905-555-0100" },
     ]);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalApiKey;
+  }
+});
+
+test("phone aliases and checkbox labels support semantic matching without guessing", async () => {
+  const originalApiKey = process.env.ANTHROPIC_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.ANTHROPIC_API_KEY = "sk-ant-test-key";
+  global.fetch = async (_url, options) => {
+    const requestBody = JSON.parse(options.body);
+    const prompt = requestBody.messages[0].content.find((block) => block.type === "text").text;
+    for (const label of ["home phone", "cell phone", "tel", "phone number"]) {
+      assert.match(prompt, new RegExp(label.replace(" ", "\\s"), "i"));
+    }
+    assert.match(prompt, /"name":"Check Box 12".*"alternateName":"Uses mobility aid"/);
+    assert.match(requestBody.system, /Return true only when the cited passage explicitly affirms the checkbox concept/);
+    assert.match(requestBody.system, /home\/landline and cell\/mobile are not interchangeable/);
+
+    return {
+      ok: true,
+      headers: { get: () => "request-phone-checkbox-test" },
+      json: async () => ({
+        model: "claude-sonnet-5",
+        stop_reason: "end_turn",
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            assignments: [
+              {
+                name: "homePhone",
+                value: "",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "Home telephone: 416-555-0101",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "cell_phone",
+                value: "",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "Mobile number: 647-555-0102",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "Tel",
+                value: "",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "Tel: 905-555-0103",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "phoneNumber",
+                value: "",
+                confidence: 0.98,
+                matchType: "semantic",
+                sourceText: "Phone number: 289-555-0104",
+                evidenceType: "record_documentation",
+              },
+              {
+                name: "Check Box 12",
+                value: true,
+                confidence: 0.94,
+                matchType: "semantic",
+                sourceText: "Patient uses a walker.",
+                evidenceType: "patient_report",
+              },
+              {
+                name: "currentSmoker",
+                value: false,
+                confidence: 0.94,
+                matchType: "semantic",
+                sourceText: "Patient denies tobacco use.",
+                evidenceType: "patient_report",
+              },
+              {
+                name: "codeineAllergy",
+                value: null,
+                confidence: 0,
+                matchType: "unsupported",
+                sourceText: null,
+                evidenceType: "not_applicable",
+              },
+            ],
+          }),
+        }],
+      }),
+    };
+  };
+
+  try {
+    const result = await mapFieldsWithClaude({
+      fields: [
+        { name: "homePhone", type: "TextField", options: [] },
+        { name: "cell_phone", type: "TextField", options: [] },
+        { name: "Tel", type: "TextField", options: [] },
+        { name: "phoneNumber", type: "TextField", options: [] },
+        {
+          name: "Check Box 12",
+          type: "CheckBox",
+          options: [],
+          alternateName: "Uses mobility aid",
+        },
+        { name: "currentSmoker", type: "CheckBox", options: [] },
+        { name: "codeineAllergy", type: "CheckBox", options: [] },
+      ],
+      freeText: "Home telephone: 416-555-0101. Mobile number: 647-555-0102. Tel: 905-555-0103. Phone number: 289-555-0104. Patient uses a walker. Patient denies tobacco use. Codeine caused nausea.",
+      pdfBase64: "JVBERi0xLjQK",
+    });
+
+    assert.deepEqual(result.assignments.map(({ name, value }) => ({ name, value })), [
+      { name: "homePhone", value: "416-555-0101" },
+      { name: "cell_phone", value: "647-555-0102" },
+      { name: "Tel", value: "905-555-0103" },
+      { name: "phoneNumber", value: "289-555-0104" },
+      { name: "Check Box 12", value: true },
+      { name: "currentSmoker", value: false },
+      { name: "codeineAllergy", value: null },
+    ]);
+    for (const assignment of result.assignments.slice(0, 6)) {
+      assert.equal(assignment.semanticMatch, true);
+      assert.equal(assignment.confidence, 0.69);
+    }
   } finally {
     global.fetch = originalFetch;
     if (originalApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
