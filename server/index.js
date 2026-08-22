@@ -291,8 +291,9 @@ function normalizeAssignment(assignment, field) {
     };
   }
   if (field.type === "TextField") {
+    const textValue = typeof value === "string" ? value.trim() : String(value).trim();
     return {
-      value: typeof value === "string" ? value : String(value),
+      value: textValue || null,
       semanticMatch: false,
     };
   }
@@ -388,6 +389,7 @@ Reason across healthcare and administrative meaning, not just identical words. T
 - negation and categorical meaning, such as "denies tobacco use" mapping to a supplied No option for current smoking;
 - field-label equivalents, such as tel, telephone, phone, phone number, and contact number;
 - an explicitly stated source term mapping to a semantically equivalent supplied form option, such as White to Caucasian.
+Return the usable field value, never whitespace, the full evidence sentence, or only the source label. For example, when a tel field is supported by "Phone number: 905-555-0100", return value "905-555-0100".
 
 For medication-related fields, reason across explicitly documented medication context, including:
 - an unambiguous brand name and its generic active ingredient, such as Synthroid/levothyroxine or Tylenol/acetaminophen;
