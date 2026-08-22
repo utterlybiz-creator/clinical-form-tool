@@ -318,7 +318,7 @@ function normalizeAssignment(assignment, field) {
     let semanticMatch = false;
     if (isPhoneField(field.name)) {
       const evidencePhone = phoneNumberFromEvidence(assignment.sourceText);
-      if (evidencePhone && !phoneNumberFromEvidence(textValue)) {
+      if (evidencePhone) {
         textValue = evidencePhone;
         semanticMatch = true;
       }
