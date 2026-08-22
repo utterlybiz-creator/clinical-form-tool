@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFHexString, PDFName } from "pdf-lib";
 import { fillPdfForm, inspectPdfForm } from "../src/pdf-form.js";
 
 async function createTestForm() {
@@ -17,6 +17,8 @@ async function createTestForm() {
   notes.addToPage(page, { x: 50, y: 600, width: 400, height: 80 });
 
   const consent = form.createCheckBox("patient.consent");
+  consent.acroField.dict.set(PDFName.of("TU"), PDFHexString.fromText("Consent to treatment"));
+  consent.acroField.dict.set(PDFName.of("TM"), PDFHexString.fromText("Treatment consent"));
   consent.addToPage(page, { x: 50, y: 560, width: 18, height: 18 });
 
   const sex = form.createRadioGroup("patient.sex");
@@ -61,6 +63,20 @@ test("inspectPdfForm describes supported AcroForm fields", async () => {
   assert.equal(
     inspection.fields.find((field) => field.name === "clinical.notes").multiline,
     true,
+  );
+  assert.deepEqual(
+    inspection.fields.find((field) => field.name === "patient.consent"),
+    {
+      name: "patient.consent",
+      type: "CheckBox",
+      options: [],
+      alternateName: "Consent to treatment",
+      mappingName: "Treatment consent",
+      exportValue: "Yes",
+      readOnly: false,
+      required: false,
+      supported: true,
+    },
   );
 });
 
