@@ -224,7 +224,7 @@ test("healthcare semantic matches include evidence and are forced into human rev
               },
               {
                 name: "tel",
-                value: "\u200b",
+                value: "\u200e",
                 confidence: 0.96,
                 matchType: "semantic",
                 sourceText: "Phone number: 905-555-0100",
