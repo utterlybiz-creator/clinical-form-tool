@@ -3,9 +3,12 @@ import {
   PDFCheckBox,
   PDFDocument,
   PDFDropdown,
+  PDFHexString,
+  PDFName,
   PDFOptionList,
   PDFRadioGroup,
   PDFSignature,
+  PDFString,
   PDFTextField,
 } from "pdf-lib";
 
@@ -36,12 +39,42 @@ function safeCall(callback, fallback) {
   }
 }
 
+function decodedDictionaryText(dictionary, key) {
+  return safeCall(() => {
+    const value = dictionary.lookupMaybe(PDFName.of(key), PDFString, PDFHexString);
+    const text = value?.decodeText().trim();
+    return text || undefined;
+  }, undefined);
+}
+
+function fieldMetadata(field) {
+  const dictionary = field.acroField?.dict;
+  if (!dictionary) return {};
+
+  const alternateName = decodedDictionaryText(dictionary, "TU");
+  const mappingName = decodedDictionaryText(dictionary, "TM");
+  const widgetDescription = safeCall(() => field.acroField.getWidgets()
+    .map((widget) => decodedDictionaryText(widget.dict, "Contents"))
+    .find(Boolean), undefined);
+  const exportValue = field instanceof PDFCheckBox
+    ? safeCall(() => field.acroField.getOnValue()?.decodeText().trim() || undefined, undefined)
+    : undefined;
+
+  return Object.fromEntries(Object.entries({
+    alternateName,
+    mappingName,
+    widgetDescription,
+    exportValue,
+  }).filter(([, value]) => value));
+}
+
 export function describeField(field) {
   const type = getFieldType(field);
   const description = {
     name: field.getName(),
     type,
     options: [],
+    ...fieldMetadata(field),
     readOnly: safeCall(() => field.isReadOnly(), false),
     required: safeCall(() => field.isRequired(), false),
     supported: !["Signature", "Button", "Unknown"].includes(type),
